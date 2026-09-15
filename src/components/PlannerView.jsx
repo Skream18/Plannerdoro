@@ -1,6 +1,12 @@
 import { daysUntil, formatFullDate, formatShortDate, relativeDeadlineLabel, urgencyOf } from '../utils/date.js'
+import PriorityDot from './PriorityDot.jsx'
 
 const TASK_TYPES = ['Lecture', 'Tutorial', 'Assignment', 'Reading', 'Topic']
+const PRIORITIES = [
+  ['low', 'Low priority'],
+  ['medium', 'Medium priority'],
+  ['high', 'High priority'],
+]
 
 const DUE_TINTS = {
   over: { bg: 'var(--tint-accent)', fg: 'var(--color-accent-400)' },
@@ -40,6 +46,7 @@ export default function PlannerView({ selectedCourse, onToggleTask, onRemoveTask
                 </button>
                 <div className="task-body">
                   <div className="task-heading">
+                    <PriorityDot priority={task.priority} />
                     <span
                       className="task-title"
                       style={{
@@ -89,6 +96,18 @@ export default function PlannerView({ selectedCourse, onToggleTask, onRemoveTask
             value={taskDraft.deadline}
             onChange={(e) => onTaskDraftChange('deadline', e.target.value)}
           />
+          <select
+            className="input task-form-priority"
+            value={taskDraft.priority}
+            onChange={(e) => onTaskDraftChange('priority', e.target.value)}
+            aria-label="Priority"
+          >
+            {PRIORITIES.map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
           <button className="btn btn-primary task-form-submit" type="submit">
             <i className="ph ph-plus" /> Add
           </button>

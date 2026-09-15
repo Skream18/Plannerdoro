@@ -1,5 +1,11 @@
 import RingProgress from './RingProgress.jsx'
 
+const TABS = [
+  ['planner', 'ph-list-checks', 'Planner'],
+  ['focus', 'ph-timer', 'Focus'],
+  ['calendar', 'ph-calendar-blank', 'Calendar'],
+]
+
 export default function Sidebar({
   theme,
   onToggleTheme,
@@ -8,7 +14,9 @@ export default function Sidebar({
   completionRatio,
   doneCount,
   totalCount,
-  doneToday,
+  todayFocusCount,
+  streak,
+  onOpenExport,
   courses,
   selectedId,
   onSelectCourse,
@@ -27,32 +35,28 @@ export default function Sidebar({
           <div className="brand-title">Semester</div>
           <div className="brand-subtitle text-muted">Course planner</div>
         </div>
-        <button className="btn btn-ghost btn-icon" onClick={onToggleTheme} title="Toggle light / dark">
+        <button className="btn btn-ghost btn-icon" onClick={onOpenExport} title="Export planner" aria-label="Export planner">
+          <i className="ph ph-export" />
+        </button>
+        <button className="btn btn-ghost btn-icon" onClick={onToggleTheme} title="Toggle light / dark" aria-label="Toggle light / dark">
           <i className={`ph ${theme === 'dark' ? 'ph-sun' : 'ph-moon'}`} />
         </button>
       </div>
 
       <div className="tab-switch">
-        <button
-          className="btn btn-ghost tab-btn"
-          onClick={() => onSetView('planner')}
-          style={{
-            background: view === 'planner' ? 'var(--tint-accent)' : 'transparent',
-            color: view === 'planner' ? 'var(--color-text)' : 'var(--ink-soft)',
-          }}
-        >
-          <i className="ph ph-list-checks" /> Planner
-        </button>
-        <button
-          className="btn btn-ghost tab-btn"
-          onClick={() => onSetView('focus')}
-          style={{
-            background: view === 'focus' ? 'var(--tint-accent)' : 'transparent',
-            color: view === 'focus' ? 'var(--color-text)' : 'var(--ink-soft)',
-          }}
-        >
-          <i className="ph ph-timer" /> Focus
-        </button>
+        {TABS.map(([key, icon, label]) => (
+          <button
+            key={key}
+            className="btn btn-ghost tab-btn"
+            onClick={() => onSetView(key)}
+            style={{
+              background: view === key ? 'var(--tint-accent)' : 'transparent',
+              color: view === key ? 'var(--color-text)' : 'var(--ink-soft)',
+            }}
+          >
+            <i className={`ph ${icon}`} /> {label}
+          </button>
+        ))}
       </div>
 
       <div className="progress-card">
@@ -65,7 +69,10 @@ export default function Sidebar({
           </div>
           <div className="text-muted progress-caption">tasks complete</div>
           <div className="progress-pomodoros">
-            <i className="ph ph-fire" /> {doneToday} pomodoros today
+            <i className="ph ph-fire" /> {todayFocusCount} pomodoros today
+          </div>
+          <div className="progress-streak text-muted">
+            <i className="ph ph-flame" /> {streak}-day streak
           </div>
         </div>
       </div>

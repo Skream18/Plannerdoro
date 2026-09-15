@@ -11,6 +11,7 @@ export const SEED_COURSES = [
         type: 'Assignment',
         deadline: '2026-10-15',
         notes: 'Understand it and submit on 15th Oct',
+        priority: 'high',
       },
     ],
   },
@@ -58,7 +59,9 @@ export function createSeedCourses() {
       type: task.type,
       deadline: task.deadline || '',
       notes: task.notes || '',
+      priority: task.priority || 'medium',
       done: false,
+      completedAt: null,
     })),
   }))
 }
