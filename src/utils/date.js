@@ -79,25 +79,3 @@ export const formatTimestamp = (iso) => {
   if (isYesterday) return `Yesterday · ${time}`
   return `${date.toLocaleDateString(undefined, { day: 'numeric', month: 'short' })} · ${time}`
 }
-
-export const startOfMonth = (date) => new Date(date.getFullYear(), date.getMonth(), 1)
-
-export const addMonths = (date, delta) => new Date(date.getFullYear(), date.getMonth() + delta, 1)
-
-/** Weeks (arrays of 7 Dates) covering the full calendar-grid for a month, Sunday-first. */
-export const monthGrid = (monthDate) => {
-  const first = startOfMonth(monthDate)
-  const gridStart = new Date(first)
-  gridStart.setDate(gridStart.getDate() - first.getDay())
-  const weeks = []
-  const cursor = new Date(gridStart)
-  for (let w = 0; w < 6; w++) {
-    const week = []
-    for (let d = 0; d < 7; d++) {
-      week.push(new Date(cursor))
-      cursor.setDate(cursor.getDate() + 1)
-    }
-    weeks.push(week)
-  }
-  return weeks
-}

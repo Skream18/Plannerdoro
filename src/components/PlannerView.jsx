@@ -34,7 +34,7 @@ export default function PlannerView({ selectedCourse, onToggleTask, onRemoveTask
               <div className="task-row" key={task.id}>
                 <button
                   className="task-check"
-                  onClick={() => onToggleTask(task.id)}
+                  onClick={() => onToggleTask(selectedCourse.id, task.id)}
                   title="Toggle complete"
                   style={{
                     borderColor: task.done ? 'var(--color-accent)' : 'var(--color-neutral-600)',
@@ -66,7 +66,11 @@ export default function PlannerView({ selectedCourse, onToggleTask, onRemoveTask
                   </div>
                   {task.notes && <div className="text-muted task-notes">{task.notes}</div>}
                 </div>
-                <button className="btn btn-ghost btn-icon task-delete" onClick={() => onRemoveTask(task.id)} title="Delete task">
+                <button
+                  className="btn btn-ghost btn-icon task-delete"
+                  onClick={() => onRemoveTask(selectedCourse.id, task.id)}
+                  title="Delete task"
+                >
                   <i className="ph ph-trash" />
                 </button>
               </div>

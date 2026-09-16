@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import Sidebar from './components/Sidebar.jsx'
 import PlannerView from './components/PlannerView.jsx'
 import FocusView from './components/FocusView.jsx'
-import CalendarView from './components/CalendarView.jsx'
+import TodayView from './components/TodayView.jsx'
 import ExportModal from './components/ExportModal.jsx'
 import Toast from './components/Toast.jsx'
 import { useCoursePlanner } from './hooks/useCoursePlanner.js'
@@ -21,8 +21,8 @@ export default function App() {
       if (isTyping) return
 
       if (e.key === '1') return planner.setView('planner')
-      if (e.key === '2') return planner.setView('focus')
-      if (e.key === '3') return planner.setView('calendar')
+      if (e.key === '2') return planner.setView('today')
+      if (e.key === '3') return planner.setView('focus')
       if (e.key.toLowerCase() === 't') return planner.toggleTheme()
       if (e.key.toLowerCase() === 'e') return setExportOpen(true)
       if (e.key === ' ' && planner.view === 'focus' && planner.focusTab === 'timer') {
@@ -68,6 +68,20 @@ export default function App() {
             upcoming={planner.upcoming}
           />
         )}
+        {planner.view === 'today' && (
+          <TodayView
+            entries={planner.todayEntries}
+            onToggleEntry={planner.toggleTodayEntry}
+            onRemoveEntry={planner.removeTodayEntry}
+            pickOptions={planner.todayPickOptions}
+            pickId={planner.todayPickId}
+            onSetPickId={planner.setTodayPickId}
+            onAddExisting={planner.addExistingToToday}
+            standaloneDraft={planner.standaloneDraft}
+            onStandaloneDraftChange={planner.setStandaloneDraftField}
+            onAddStandalone={planner.addStandaloneToday}
+          />
+        )}
         {planner.view === 'focus' && (
           <FocusView
             focusTab={planner.focusTab}
@@ -95,11 +109,8 @@ export default function App() {
             streak={planner.streak}
           />
         )}
-        {planner.view === 'calendar' && (
-          <CalendarView courses={planner.courses} activityByDay={planner.activityByDay} streak={planner.streak} />
-        )}
       </main>
-      <ExportModal open={exportOpen} courses={planner.courses} onClose={() => setExportOpen(false)} />
+      <ExportModal open={exportOpen} courses={planner.courses} todayEntries={planner.todayEntries} onClose={() => setExportOpen(false)} />
       <Toast toast={planner.toast} onDismiss={planner.dismissToast} />
     </div>
   )

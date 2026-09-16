@@ -1,10 +1,26 @@
 const PRIORITY_LABEL = { high: 'High', medium: 'Medium', low: 'Low' }
 
-export function buildExportText(courses, generatedAt = new Date()) {
+export function buildExportText(courses, todayEntries = [], generatedAt = new Date()) {
   const lines = []
   lines.push('NOCTURNE COURSE PLANNER')
   lines.push(`Exported ${generatedAt.toLocaleString()}`)
   lines.push('='.repeat(48))
+
+  if (todayEntries.length) {
+    const todayDone = todayEntries.filter((t) => t.done).length
+    lines.push('')
+    lines.push(`TODAY — ${generatedAt.toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' })} (${todayDone}/${todayEntries.length} complete)`)
+    lines.push('-'.repeat(48))
+    for (const entry of todayEntries) {
+      const box = entry.done ? '[x]' : '[ ]'
+      const meta = [`priority: ${PRIORITY_LABEL[entry.priority] || 'Medium'}`]
+      if (entry.courseName) meta.push(`course: ${entry.courseName}`)
+      lines.push(`  ${box} ${entry.title}  (${meta.join(', ')})`)
+      if (entry.notes) lines.push(`      note: ${entry.notes}`)
+    }
+    lines.push('')
+    lines.push('='.repeat(48))
+  }
 
   for (const course of courses) {
     const done = course.tasks.filter((t) => t.done).length

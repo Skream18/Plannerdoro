@@ -8,6 +8,7 @@ import { playChime } from '../utils/sound.js'
 const STORAGE_KEY = 'nocturne-course-planner-v2'
 const LEGACY_KEY = 'nocturne-course-planner-v1'
 const MAX_SESSIONS = 500
+const MAX_TODAY_HISTORY_DAYS = 30
 
 export const DEFAULT_SETTINGS = { focusMinutes: 45, shortMinutes: 5, longMinutes: 15 }
 const DURATION_BOUNDS = { min: 1, max: 180 }
@@ -44,6 +45,32 @@ function normalizeCourses(rawCourses) {
         }))
       : [],
   }))
+}
+
+function normalizeTodayTasksByDay(raw) {
+  if (!raw || typeof raw !== 'object') return {}
+  const dayKeys = Object.keys(raw).sort().slice(-MAX_TODAY_HISTORY_DAYS)
+  const out = {}
+  for (const day of dayKeys) {
+    const list = raw[day]
+    if (!Array.isArray(list)) continue
+    out[day] = list
+      .filter((e) => e && e.id && (e.kind === 'existing' || e.kind === 'standalone'))
+      .map((e) =>
+        e.kind === 'existing'
+          ? { id: e.id, kind: 'existing', courseId: e.courseId, taskId: e.taskId }
+          : {
+              id: e.id,
+              kind: 'standalone',
+              title: e.title || '',
+              notes: e.notes || '',
+              priority: ['low', 'medium', 'high'].includes(e.priority) ? e.priority : 'medium',
+              done: !!e.done,
+              completedAt: e.completedAt || null,
+            },
+      )
+  }
+  return out
 }
 
 function normalizeSessions(raw) {
@@ -141,12 +168,15 @@ export function useCoursePlanner() {
     () => persisted?.stopwatch || { accumulatedMs: 0, running: false, startedAt: null },
   )
   const [laps, setLaps] = useState(() => (Array.isArray(persisted?.laps) ? persisted.laps : []))
+  const [todayTasksByDay, setTodayTasksByDay] = useState(() => normalizeTodayTasksByDay(persisted?.todayTasksByDay))
 
   const [view, setView] = useState('planner')
   const [focusTab, setFocusTab] = useState('timer')
   const [selId, setSelId] = useState(null)
   const [newCourseName, setNewCourseName] = useState('')
   const [taskDraft, setTaskDraft] = useState({ title: '', type: 'Lecture', deadline: '', notes: '', priority: 'medium' })
+  const [standaloneDraft, setStandaloneDraft] = useState({ title: '', notes: '', priority: 'medium' })
+  const [todayPickId, setTodayPickId] = useState('')
   const [linked, setLinked] = useState('')
   const [toast, setToast] = useState(null)
 
@@ -174,15 +204,18 @@ export function useCoursePlanner() {
     document.documentElement.dataset.theme = theme
   }, [theme])
 
-  // — persistence: courses, theme, settings, sessions, stopwatch, laps —
+  // — persistence: courses, theme, settings, sessions, stopwatch, laps, today's list —
   useEffect(() => {
     try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify({ courses, theme, settings, sessions, stopwatch, laps }))
+      localStorage.setItem(
+        STORAGE_KEY,
+        JSON.stringify({ courses, theme, settings, sessions, stopwatch, laps, todayTasksByDay }),
+      )
       localStorage.removeItem(LEGACY_KEY)
     } catch {
       /* localStorage unavailable (private mode, quota) — planner still works in-memory */
     }
-  }, [courses, theme, settings, sessions, stopwatch, laps])
+  }, [courses, theme, settings, sessions, stopwatch, laps, todayTasksByDay])
 
   // — pomodoro tick — durationsRef avoids restarting the interval whenever settings change —
   const durationsRef = useRef(durations)
@@ -278,9 +311,65 @@ export function useCoursePlanner() {
     [allTasks],
   )
 
-  const activityByDay = useMemo(() => collectActivityByDay(courses, sessions), [courses, sessions])
+  const activityByDay = useMemo(
+    () => collectActivityByDay(courses, sessions, todayTasksByDay),
+    [courses, sessions, todayTasksByDay],
+  )
   const streak = useMemo(() => computeStreak(activityByDay), [activityByDay])
   const sessionStats = useMemo(() => computeSessionStats(sessions), [sessions])
+
+  // — prune "today" entries that reference a task/course which no longer exists —
+  useEffect(() => {
+    setTodayTasksByDay((prev) => {
+      let changed = false
+      const next = {}
+      for (const [day, list] of Object.entries(prev)) {
+        const filtered = list.filter((e) => e.kind !== 'existing' || allTasks.some((x) => x.task.id === e.taskId))
+        if (filtered.length !== list.length) changed = true
+        next[day] = filtered
+      }
+      return changed ? next : prev
+    })
+  }, [allTasks])
+
+  const todayKeyNow = todayKey()
+  const todayEntries = useMemo(() => todayTasksByDay[todayKeyNow] || [], [todayTasksByDay, todayKeyNow])
+
+  const resolvedTodayEntries = useMemo(
+    () =>
+      todayEntries
+        .map((entry) => {
+          if (entry.kind === 'existing') {
+            const found = allTasks.find((x) => x.task.id === entry.taskId)
+            if (!found) return null
+            return {
+              id: entry.id,
+              kind: 'existing',
+              title: found.task.title,
+              courseName: found.course.name,
+              priority: found.task.priority,
+              done: found.task.done,
+              notes: found.task.notes,
+            }
+          }
+          return {
+            id: entry.id,
+            kind: 'standalone',
+            title: entry.title,
+            courseName: null,
+            priority: entry.priority,
+            done: entry.done,
+            notes: entry.notes,
+          }
+        })
+        .filter(Boolean),
+    [todayEntries, allTasks],
+  )
+
+  const todayPickOptions = useMemo(() => {
+    const refIds = new Set(todayEntries.filter((e) => e.kind === 'existing').map((e) => e.taskId))
+    return allTasks.filter((x) => !refIds.has(x.task.id)).map((x) => ({ id: x.task.id, label: `${x.course.name} — ${x.task.title}` }))
+  }, [todayEntries, allTasks])
 
   function mutateCourse(id, fn) {
     setCourses((cs) => cs.map((c) => (c.id === id ? fn(c) : c)))
@@ -325,8 +414,8 @@ export function useCoursePlanner() {
     setTaskDraft((d) => ({ ...d, title: '', deadline: '', notes: '' }))
   }
 
-  function toggleTask(taskId) {
-    mutateCourse(selectedCourse.id, (c) => ({
+  function toggleTask(courseId, taskId) {
+    mutateCourse(courseId, (c) => ({
       ...c,
       tasks: c.tasks.map((t) =>
         t.id === taskId ? { ...t, done: !t.done, completedAt: !t.done ? new Date().toISOString() : null } : t,
@@ -334,12 +423,66 @@ export function useCoursePlanner() {
     }))
   }
 
-  function removeTask(taskId) {
-    mutateCourse(selectedCourse.id, (c) => ({ ...c, tasks: c.tasks.filter((t) => t.id !== taskId) }))
+  function removeTask(courseId, taskId) {
+    mutateCourse(courseId, (c) => ({ ...c, tasks: c.tasks.filter((t) => t.id !== taskId) }))
   }
 
   function setTaskDraftField(field, value) {
     setTaskDraft((d) => ({ ...d, [field]: value }))
+  }
+
+  // — today's list —
+  function addExistingToToday(e) {
+    e.preventDefault()
+    if (!todayPickId) return
+    const found = allTasks.find((x) => x.task.id === todayPickId)
+    if (!found) return
+    setTodayTasksByDay((prev) => {
+      const list = prev[todayKeyNow] || []
+      if (list.some((entry) => entry.kind === 'existing' && entry.taskId === todayPickId)) return prev
+      return { ...prev, [todayKeyNow]: [...list, { id: uid(), kind: 'existing', courseId: found.course.id, taskId: todayPickId }] }
+    })
+    setTodayPickId('')
+  }
+
+  function addStandaloneToday(e) {
+    e.preventDefault()
+    const title = standaloneDraft.title.trim()
+    if (!title) return
+    const entry = {
+      id: uid(),
+      kind: 'standalone',
+      title,
+      notes: standaloneDraft.notes.trim(),
+      priority: standaloneDraft.priority,
+      done: false,
+      completedAt: null,
+    }
+    setTodayTasksByDay((prev) => ({ ...prev, [todayKeyNow]: [...(prev[todayKeyNow] || []), entry] }))
+    setStandaloneDraft((d) => ({ ...d, title: '', notes: '' }))
+  }
+
+  function toggleTodayEntry(entryId) {
+    const entry = todayEntries.find((x) => x.id === entryId)
+    if (!entry) return
+    if (entry.kind === 'existing') {
+      toggleTask(entry.courseId, entry.taskId)
+      return
+    }
+    setTodayTasksByDay((prev) => ({
+      ...prev,
+      [todayKeyNow]: (prev[todayKeyNow] || []).map((x) =>
+        x.id === entryId ? { ...x, done: !x.done, completedAt: !x.done ? new Date().toISOString() : null } : x,
+      ),
+    }))
+  }
+
+  function removeTodayEntry(entryId) {
+    setTodayTasksByDay((prev) => ({ ...prev, [todayKeyNow]: (prev[todayKeyNow] || []).filter((x) => x.id !== entryId) }))
+  }
+
+  function setStandaloneDraftField(field, value) {
+    setStandaloneDraft((d) => ({ ...d, [field]: value }))
   }
 
   function updateSettings(field, minutes) {
@@ -390,6 +533,16 @@ export function useCoursePlanner() {
     completionRatio,
     upcoming,
     openTasks,
+    todayEntries: resolvedTodayEntries,
+    todayPickOptions,
+    todayPickId,
+    setTodayPickId,
+    addExistingToToday,
+    standaloneDraft,
+    setStandaloneDraftField,
+    addStandaloneToday,
+    toggleTodayEntry,
+    removeTodayEntry,
     linked,
     setLinked,
     timer,
@@ -402,7 +555,6 @@ export function useCoursePlanner() {
     skipMode: () => dispatchTimer({ type: 'SKIP', durations }),
     sessions,
     sessionStats,
-    activityByDay,
     streak,
     stopwatch,
     stopwatchElapsedMs,

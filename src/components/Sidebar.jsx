@@ -2,8 +2,8 @@ import RingProgress from './RingProgress.jsx'
 
 const TABS = [
   ['planner', 'ph-list-checks', 'Planner'],
+  ['today', 'ph-check-circle', 'Today'],
   ['focus', 'ph-timer', 'Focus'],
-  ['calendar', 'ph-calendar-blank', 'Calendar'],
 ]
 
 export default function Sidebar({

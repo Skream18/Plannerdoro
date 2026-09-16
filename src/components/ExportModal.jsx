@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import { buildExportText, downloadTextFile } from '../utils/export.js'
 
-export default function ExportModal({ open, courses, onClose }) {
+export default function ExportModal({ open, courses, todayEntries, onClose }) {
   const [copied, setCopied] = useState(false)
-  const text = useMemo(() => (open ? buildExportText(courses) : ''), [open, courses])
+  const text = useMemo(() => (open ? buildExportText(courses, todayEntries) : ''), [open, courses, todayEntries])
 
   useEffect(() => {
     if (!open) return
