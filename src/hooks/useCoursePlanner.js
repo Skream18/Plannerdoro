@@ -112,17 +112,25 @@ function loadPersisted() {
  * are applied in order against each other's results — safe even if several SKIPs fire before a
  * re-render lands. Reading `timer.mode` from a component-closure for that decision (the original
  * approach here) went stale under rapid dispatches and silently dropped transitions.
+ *
+ * `elapsedFocusSeconds` tracks real active seconds spent in the *current* focus segment (only ticks
+ * up while running in focus mode) so partial study time is never lost: it's flushed into a logged
+ * session — counting toward stats — whenever that segment ends for any reason (completes, is
+ * skipped, is reset, or the mode is switched away), not only on a full 45-minute completion.
  */
-function completeMode(state, durations) {
+function finishSegment(state, durations, { natural }) {
   const finishedMode = state.mode
-  const finishedMinutes = durations[finishedMode] / 60
+  const elapsedFocusSeconds = finishedMode === 'focus' && natural ? state.elapsedFocusSeconds + 1 : state.elapsedFocusSeconds
   const today = todayKey()
   let todayFocusCount = state.today === today ? state.todayFocusCount : 0
   let nextMode
+  let finishedMinutes
   if (finishedMode === 'focus') {
+    finishedMinutes = elapsedFocusSeconds / 60
     todayFocusCount += 1
     nextMode = todayFocusCount % 4 === 0 ? 'long' : 'short'
   } else {
+    finishedMinutes = durations[finishedMode] / 60
     nextMode = 'focus'
   }
   return {
@@ -132,26 +140,49 @@ function completeMode(state, durations) {
     running: false,
     today,
     todayFocusCount,
+    elapsedFocusSeconds: 0,
     lastCompletionSeq: state.lastCompletionSeq + 1,
-    lastCompletion: { mode: finishedMode, minutes: finishedMinutes },
+    lastCompletion: { mode: finishedMode, minutes: finishedMinutes, partial: false },
   }
+}
+
+/** Flushes any accumulated (but not-yet-logged) focus time before applying `patch` — used whenever
+ * the current segment is abandoned rather than completed (reset, switching modes, or a settings
+ * change resyncing the idle countdown), so those seconds still land in stats. */
+function withFocusFlush(state, patch) {
+  if (state.mode === 'focus' && state.elapsedFocusSeconds > 0) {
+    return {
+      ...state,
+      ...patch,
+      elapsedFocusSeconds: 0,
+      lastCompletionSeq: state.lastCompletionSeq + 1,
+      lastCompletion: { mode: 'focus', minutes: state.elapsedFocusSeconds / 60, partial: true },
+    }
+  }
+  return { ...state, ...patch, elapsedFocusSeconds: 0 }
 }
 
 function timerReducer(state, action) {
   switch (action.type) {
-    case 'TICK':
+    case 'TICK': {
       if (!state.running) return state
-      return state.left > 1 ? { ...state, left: state.left - 1 } : completeMode(state, action.durations)
+      if (state.left > 1) {
+        return state.mode === 'focus'
+          ? { ...state, left: state.left - 1, elapsedFocusSeconds: state.elapsedFocusSeconds + 1 }
+          : { ...state, left: state.left - 1 }
+      }
+      return finishSegment(state, action.durations, { natural: true })
+    }
     case 'SKIP':
-      return completeMode(state, action.durations)
+      return finishSegment(state, action.durations, { natural: false })
     case 'SET_MODE':
-      return { ...state, mode: action.mode, left: action.left, running: false }
+      return withFocusFlush(state, { mode: action.mode, left: action.left, running: false })
     case 'SYNC_DURATION':
-      return { ...state, left: action.left }
+      return withFocusFlush(state, { left: action.left })
     case 'TOGGLE_RUN':
       return { ...state, running: !state.running }
     case 'RESET':
-      return { ...state, left: action.left, running: false }
+      return withFocusFlush(state, { left: action.left, running: false })
     default:
       return state
   }
@@ -194,6 +225,7 @@ export function useCoursePlanner() {
       running: false,
       today,
       todayFocusCount,
+      elapsedFocusSeconds: 0,
       lastCompletionSeq: 0,
       lastCompletion: null,
     }
@@ -225,13 +257,18 @@ export function useCoursePlanner() {
     return () => clearInterval(id)
   }, [])
 
-  // — keep the idle countdown synced to duration settings without disturbing a running session —
+  // — keep the idle countdown synced to duration settings without disturbing a running OR paused
+  // session — only fires when `durations` itself changes (the settings were edited), never merely
+  // because `running`/`left` changed (e.g. on pause), which previously reset the countdown on pause.
+  const timerRef = useRef(timer)
+  timerRef.current = timer
+  const prevDurationsRef = useRef(durations)
   useEffect(() => {
-    if (timer.running) return
-    const target = durations[timer.mode]
-    if (timer.left === target) return
-    dispatchTimer({ type: 'SYNC_DURATION', left: target })
-  }, [durations, timer.mode, timer.running, timer.left])
+    if (durations === prevDurationsRef.current) return
+    prevDurationsRef.current = durations
+    if (timerRef.current.running) return
+    dispatchTimer({ type: 'SYNC_DURATION', left: durations[timerRef.current.mode] })
+  }, [durations])
 
   // — toast auto-dismiss —
   useEffect(() => {
@@ -254,13 +291,15 @@ export function useCoursePlanner() {
   const linkedRef = useRef(linked)
   linkedRef.current = linked
 
-  // — react to completions the reducer recorded (tick-to-zero or Skip) — logs history, chimes, toasts.
-  // Guarded by seq rather than a boolean so React StrictMode's double-invoke can't double-fire it.
+  // — react to completions the reducer recorded (natural completion, Skip, or an abandoned partial
+  // segment from Reset/switching modes/a settings resync) — logs history, and for real completions
+  // only, chimes + toasts. Guarded by seq rather than a boolean so React StrictMode's double-invoke
+  // can't double-fire it.
   const lastHandledSeqRef = useRef(0)
   useEffect(() => {
     if (timer.lastCompletionSeq === lastHandledSeqRef.current) return
     lastHandledSeqRef.current = timer.lastCompletionSeq
-    const { mode: finishedMode, minutes } = timer.lastCompletion
+    const { mode: finishedMode, minutes, partial } = timer.lastCompletion
     const record = {
       id: uid(),
       mode: finishedMode,
@@ -269,6 +308,7 @@ export function useCoursePlanner() {
       linkedLabel: finishedMode === 'focus' && linkedRef.current ? allTasksLabel.get(linkedRef.current) || null : null,
     }
     setSessions((prev) => [...prev, record].slice(-MAX_SESSIONS))
+    if (partial) return
     playChime()
     setToast(
       finishedMode === 'focus'
@@ -317,6 +357,31 @@ export function useCoursePlanner() {
   )
   const streak = useMemo(() => computeStreak(activityByDay), [activityByDay])
   const sessionStats = useMemo(() => computeSessionStats(sessions), [sessions])
+
+  // — chronological log of everything completed: course/standalone tasks + focus sessions —
+  const completedLog = useMemo(() => {
+    const items = []
+    for (const course of courses) {
+      for (const task of course.tasks) {
+        if (task.done && task.completedAt) {
+          items.push({ id: task.id, kind: 'task', title: task.title, courseName: course.name, completedAt: task.completedAt })
+        }
+      }
+    }
+    for (const list of Object.values(todayTasksByDay)) {
+      for (const entry of list) {
+        if (entry.kind === 'standalone' && entry.done && entry.completedAt) {
+          items.push({ id: entry.id, kind: 'task', title: entry.title, courseName: null, completedAt: entry.completedAt })
+        }
+      }
+    }
+    for (const s of sessions) {
+      if (s.mode === 'focus') {
+        items.push({ id: s.id, kind: 'session', minutes: s.minutes, linkedLabel: s.linkedLabel, completedAt: s.completedAt })
+      }
+    }
+    return items.sort((a, b) => b.completedAt.localeCompare(a.completedAt))
+  }, [courses, todayTasksByDay, sessions])
 
   // — prune "today" entries that reference a task/course which no longer exists —
   useEffect(() => {
@@ -569,6 +634,7 @@ export function useCoursePlanner() {
     skipMode: () => dispatchTimer({ type: 'SKIP', durations }),
     sessions,
     sessionStats,
+    completedLog,
     streak,
     stopwatch,
     stopwatchElapsedMs,

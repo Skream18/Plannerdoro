@@ -4,6 +4,7 @@ const TABS = [
   ['planner', 'ph-list-checks', 'Planner'],
   ['today', 'ph-check-circle', 'Today'],
   ['focus', 'ph-timer', 'Focus'],
+  ['stats', 'ph-chart-line', 'Stats'],
 ]
 
 export default function Sidebar({

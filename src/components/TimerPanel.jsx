@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import RingProgress from './RingProgress.jsx'
 import { formatClock } from '../utils/date.js'
 import { primeAudio } from '../utils/sound.js'
@@ -31,21 +31,39 @@ export default function TimerPanel({
   todayFocusCount,
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false)
+  const [isFullscreen, setIsFullscreen] = useState(false)
+  const containerRef = useRef(null)
   const total = durations[timer.mode]
   const left = timer.left
   const elapsedRatio = total ? (total - left) / total : 0
   const runLabel = timer.running ? 'Pause' : left === total ? 'Start' : 'Resume'
   const tomatoCount = Math.max(4, todayFocusCount)
 
+  useEffect(() => {
+    function handleChange() {
+      setIsFullscreen(document.fullscreenElement === containerRef.current)
+    }
+    document.addEventListener('fullscreenchange', handleChange)
+    return () => document.removeEventListener('fullscreenchange', handleChange)
+  }, [])
+
   function handleToggleRun() {
     if (!timer.running) primeAudio()
     onToggleRun()
   }
 
+  function toggleFullscreen() {
+    if (document.fullscreenElement) {
+      document.exitFullscreen()
+    } else {
+      containerRef.current?.requestFullscreen?.().catch(() => {})
+    }
+  }
+
   return (
-    <div className="focus-view">
+    <div className="focus-view" ref={containerRef}>
       <div className="timer-toprow">
-        <div className="mode-switch">
+        <div className="mode-switch focus-hide-in-fullscreen">
           {MODES.map(([key, label]) => (
             <button
               key={key}
@@ -61,7 +79,15 @@ export default function TimerPanel({
           ))}
         </div>
         <button
-          className="btn btn-ghost btn-icon"
+          className="btn btn-ghost btn-icon fullscreen-toggle-btn"
+          onClick={toggleFullscreen}
+          title={isFullscreen ? 'Exit fullscreen' : 'Go fullscreen'}
+          aria-label={isFullscreen ? 'Exit fullscreen' : 'Go fullscreen'}
+        >
+          <i className={`ph ${isFullscreen ? 'ph-arrows-in' : 'ph-arrows-out'}`} />
+        </button>
+        <button
+          className="btn btn-ghost btn-icon focus-hide-in-fullscreen"
           onClick={() => setSettingsOpen((v) => !v)}
           title="Timer duration settings"
           aria-label="Timer duration settings"
@@ -71,7 +97,7 @@ export default function TimerPanel({
       </div>
 
       {settingsOpen && (
-        <div className="timer-settings">
+        <div className="timer-settings focus-hide-in-fullscreen">
           {SETTING_FIELDS.map(([field, label]) => (
             <label className="timer-setting" key={field}>
               <span className="text-muted">{label}</span>
@@ -105,7 +131,7 @@ export default function TimerPanel({
         </button>
       </div>
 
-      <div className="linked-task">
+      <div className="linked-task focus-hide-in-fullscreen">
         <label className="text-muted linked-label">Working on</label>
         <select className="input linked-select" value={linked} onChange={(e) => onSetLinked(e.target.value)}>
           <option value="">Nothing in particular</option>

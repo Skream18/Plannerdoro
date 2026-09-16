@@ -3,6 +3,7 @@ import Sidebar from './components/Sidebar.jsx'
 import PlannerView from './components/PlannerView.jsx'
 import FocusView from './components/FocusView.jsx'
 import TodayView from './components/TodayView.jsx'
+import StatsPage from './components/StatsPage.jsx'
 import ExportModal from './components/ExportModal.jsx'
 import Toast from './components/Toast.jsx'
 import { useCoursePlanner } from './hooks/useCoursePlanner.js'
@@ -23,6 +24,7 @@ export default function App() {
       if (e.key === '1') return planner.setView('planner')
       if (e.key === '2') return planner.setView('today')
       if (e.key === '3') return planner.setView('focus')
+      if (e.key === '4') return planner.setView('stats')
       if (e.key.toLowerCase() === 't') return planner.toggleTheme()
       if (e.key.toLowerCase() === 'e') return setExportOpen(true)
       if (e.key === ' ' && planner.view === 'focus' && planner.focusTab === 'timer') {
@@ -110,6 +112,7 @@ export default function App() {
             streak={planner.streak}
           />
         )}
+        {planner.view === 'stats' && <StatsPage completedLog={planner.completedLog} streak={planner.streak} timer={planner.timer} />}
       </main>
       <ExportModal open={exportOpen} courses={planner.courses} todayEntries={planner.todayEntries} onClose={() => setExportOpen(false)} />
       <Toast toast={planner.toast} onDismiss={planner.dismissToast} />
