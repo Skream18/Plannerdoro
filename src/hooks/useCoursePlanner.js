@@ -427,6 +427,19 @@ export function useCoursePlanner() {
     mutateCourse(courseId, (c) => ({ ...c, tasks: c.tasks.filter((t) => t.id !== taskId) }))
   }
 
+  function reorderTasks(courseId, draggedId, targetId) {
+    if (draggedId === targetId) return
+    mutateCourse(courseId, (c) => {
+      const fromIndex = c.tasks.findIndex((t) => t.id === draggedId)
+      const toIndex = c.tasks.findIndex((t) => t.id === targetId)
+      if (fromIndex === -1 || toIndex === -1) return c
+      const tasks = [...c.tasks]
+      const [moved] = tasks.splice(fromIndex, 1)
+      tasks.splice(toIndex, 0, moved)
+      return { ...c, tasks }
+    })
+  }
+
   function setTaskDraftField(field, value) {
     setTaskDraft((d) => ({ ...d, [field]: value }))
   }
@@ -528,6 +541,7 @@ export function useCoursePlanner() {
     addTask,
     toggleTask,
     removeTask,
+    reorderTasks,
     doneCount,
     totalCount,
     completionRatio,

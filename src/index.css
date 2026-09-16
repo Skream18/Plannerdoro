@@ -264,6 +264,17 @@ input, select, textarea { font-family: var(--font-body); }
   border: 1px solid transparent; transition: background 160ms ease;
 }
 .task-row:hover { background: var(--color-surface) !important; border-color: var(--color-divider) !important; }
+.task-drag-handle {
+  flex: 0 0 auto; margin-top: 3px; width: 16px; height: 18px; display: grid; place-items: center;
+  color: var(--ink-soft); opacity: 0; cursor: grab; touch-action: none; font-size: 13px;
+  transition: opacity 120ms ease;
+}
+.task-row:hover .task-drag-handle,
+.task-row.task-row-dragging .task-drag-handle { opacity: 1; }
+.task-row.task-row-dragging {
+  background: var(--color-surface) !important; border-color: var(--color-accent) !important;
+  box-shadow: var(--shadow-sm); cursor: grabbing;
+}
 .task-check {
   flex: 0 0 auto; margin-top: 2px; width: 20px; height: 20px; border-radius: 20px;
   cursor: pointer; display: grid; place-items: center; font-size: 11px;

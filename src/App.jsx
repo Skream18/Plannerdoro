@@ -62,6 +62,7 @@ export default function App() {
             selectedCourse={planner.selectedCourse}
             onToggleTask={planner.toggleTask}
             onRemoveTask={planner.removeTask}
+            onReorderTasks={planner.reorderTasks}
             taskDraft={planner.taskDraft}
             onTaskDraftChange={planner.setTaskDraftField}
             onAddTask={planner.addTask}

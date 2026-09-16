@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { daysUntil, formatFullDate, formatShortDate, relativeDeadlineLabel, urgencyOf } from '../utils/date.js'
 import PriorityDot from './PriorityDot.jsx'
 
@@ -14,8 +15,51 @@ const DUE_TINTS = {
   calm: { bg: 'var(--tint-neutral)', fg: 'var(--ink-soft)' },
 }
 
-export default function PlannerView({ selectedCourse, onToggleTask, onRemoveTask, taskDraft, onTaskDraftChange, onAddTask, upcoming }) {
+// Keeps a drag from turning into a text selection while the pointer moves across rows.
+function lockTextSelection(locked) {
+  document.body.style.userSelect = locked ? 'none' : ''
+}
+
+export default function PlannerView({
+  selectedCourse,
+  onToggleTask,
+  onRemoveTask,
+  onReorderTasks,
+  taskDraft,
+  onTaskDraftChange,
+  onAddTask,
+  upcoming,
+}) {
   const selDone = selectedCourse.tasks.filter((t) => t.done).length
+  const [dragId, setDragId] = useState(null)
+
+  // Pointer-based drag reorder (works for mouse and touch alike, unlike native HTML5 drag-and-drop).
+  // Listeners are attached synchronously inside the pointerdown handler itself — not in a useEffect
+  // keyed off state — so a pointermove arriving a frame later (well before React re-renders) is
+  // never missed.
+  function handleDragStart(e, taskId) {
+    e.preventDefault()
+    const courseId = selectedCourse.id
+    setDragId(taskId)
+    lockTextSelection(true)
+
+    function handleMove(moveEvent) {
+      const row = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY)?.closest('[data-task-id]')
+      const overId = row?.dataset.taskId
+      if (overId && overId !== taskId) onReorderTasks(courseId, taskId, overId)
+    }
+    function handleEnd() {
+      setDragId(null)
+      lockTextSelection(false)
+      window.removeEventListener('pointermove', handleMove)
+      window.removeEventListener('pointerup', handleEnd)
+      window.removeEventListener('pointercancel', handleEnd)
+    }
+
+    window.addEventListener('pointermove', handleMove)
+    window.addEventListener('pointerup', handleEnd)
+    window.addEventListener('pointercancel', handleEnd)
+  }
 
   return (
     <div className="planner-layout">
@@ -31,7 +75,19 @@ export default function PlannerView({ selectedCourse, onToggleTask, onRemoveTask
             const urgency = task.deadline ? urgencyOf(daysUntil(task.deadline)) : 'calm'
             const tint = DUE_TINTS[urgency]
             return (
-              <div className="task-row" key={task.id}>
+              <div
+                className={`task-row${dragId === task.id ? ' task-row-dragging' : ''}`}
+                key={task.id}
+                data-task-id={task.id}
+              >
+                <span
+                  className="task-drag-handle"
+                  onPointerDown={(e) => handleDragStart(e, task.id)}
+                  title="Drag to reorder"
+                  aria-label="Drag to reorder"
+                >
+                  <i className="ph ph-dots-six-vertical" />
+                </span>
                 <button
                   className="task-check"
                   onClick={() => onToggleTask(selectedCourse.id, task.id)}
