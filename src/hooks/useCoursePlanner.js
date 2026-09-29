@@ -335,7 +335,6 @@ export function useCoursePlanner() {
       allTasks
         .filter((x) => x.task.deadline && !x.task.done)
         .sort((a, b) => (a.task.deadline < b.task.deadline ? -1 : 1))
-        .slice(0, 6)
         .map((x) => ({
           id: x.task.id,
           title: x.task.title,
