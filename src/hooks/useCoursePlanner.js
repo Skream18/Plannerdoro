@@ -120,7 +120,10 @@ function loadPersisted() {
  */
 function finishSegment(state, durations, { natural }) {
   const finishedMode = state.mode
-  const elapsedFocusSeconds = finishedMode === 'focus' && natural ? state.elapsedFocusSeconds + 1 : state.elapsedFocusSeconds
+  // `state.left` (not a fixed 1) is however many seconds were actually still remaining when the
+  // segment completed, which matters once ticks carry a variable real-clock delta rather than
+  // always exactly one second (see TICK below).
+  const elapsedFocusSeconds = finishedMode === 'focus' && natural ? state.elapsedFocusSeconds + state.left : state.elapsedFocusSeconds
   const today = todayKey()
   let todayFocusCount = state.today === today ? state.todayFocusCount : 0
   let nextMode
@@ -166,11 +169,18 @@ function timerReducer(state, action) {
   switch (action.type) {
     case 'TICK': {
       if (!state.running) return state
-      if (state.left > 1) {
+      // `deltaSeconds` is however much real wall-clock time actually passed since the last
+      // processed tick (see the ticking effect below) rather than an assumed 1s, so the countdown
+      // stays correct even when the browser throttles or pauses setInterval in a background tab.
+      const delta = Math.max(1, Math.floor(action.deltaSeconds ?? 1))
+      if (state.left > delta) {
         return state.mode === 'focus'
-          ? { ...state, left: state.left - 1, elapsedFocusSeconds: state.elapsedFocusSeconds + 1 }
-          : { ...state, left: state.left - 1 }
+          ? { ...state, left: state.left - delta, elapsedFocusSeconds: state.elapsedFocusSeconds + delta }
+          : { ...state, left: state.left - delta }
       }
+      // A long-enough delta (e.g. the tab was backgrounded through the whole segment) always just
+      // finishes the current segment once rather than cascading through several — matching what a
+      // user expects to see on returning, not a stack of catch-up completions and chimes.
       return finishSegment(state, action.durations, { natural: true })
     }
     case 'SKIP':
@@ -252,16 +262,41 @@ export function useCoursePlanner() {
   // — pomodoro tick — durationsRef avoids restarting the interval whenever settings change —
   const durationsRef = useRef(durations)
   durationsRef.current = durations
+  const timerRef = useRef(timer)
+  timerRef.current = timer
+
+  // The countdown is driven by real elapsed wall-clock time (Date.now() deltas) rather than by
+  // counting how many times the 1s interval fired, so it keeps ticking correctly even when the
+  // tab is in the background: Chrome throttles (and can nearly freeze) setInterval in hidden tabs,
+  // but whenever this callback does run — on its own delayed schedule, or immediately when the tab
+  // regains visibility/focus — it computes the real number of seconds that passed and catches the
+  // countdown up to it, instead of silently stalling.
+  const tickAnchorRef = useRef(Date.now())
   useEffect(() => {
-    const id = setInterval(() => dispatchTimer({ type: 'TICK', durations: durationsRef.current }), 1000)
-    return () => clearInterval(id)
+    if (timer.running) tickAnchorRef.current = Date.now()
+  }, [timer.running])
+  useEffect(() => {
+    function tick() {
+      if (!timerRef.current.running) return
+      const now = Date.now()
+      const deltaSeconds = Math.floor((now - tickAnchorRef.current) / 1000)
+      if (deltaSeconds < 1) return
+      tickAnchorRef.current += deltaSeconds * 1000
+      dispatchTimer({ type: 'TICK', deltaSeconds, durations: durationsRef.current })
+    }
+    const id = setInterval(tick, 1000)
+    document.addEventListener('visibilitychange', tick)
+    window.addEventListener('focus', tick)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', tick)
+      window.removeEventListener('focus', tick)
+    }
   }, [])
 
   // — keep the idle countdown synced to duration settings without disturbing a running OR paused
   // session — only fires when `durations` itself changes (the settings were edited), never merely
   // because `running`/`left` changed (e.g. on pause), which previously reset the countdown on pause.
-  const timerRef = useRef(timer)
-  timerRef.current = timer
   const prevDurationsRef = useRef(durations)
   useEffect(() => {
     if (durations === prevDurationsRef.current) return
